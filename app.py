@@ -32,7 +32,12 @@ st.markdown("""
 
 html, body, [class*="css"] { font-family: 'IBM Plex Sans', sans-serif; }
 .stApp { background-color: #0a0e1a; color: #c9d1e0; }
-[data-testid="stSidebar"] { background-color: #0d1221 !important; border-right: 1px solid #1e2d4a; }
+[data-testid="stSidebar"] {
+    background-color: #0d1221 !important;
+    border-right: 1px solid #1e2d4a;
+    min-width: 360px !important;
+    max-width: 360px !important;
+}
 .sidebar-section {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.68rem;
@@ -60,6 +65,14 @@ label, .stLabel {
     font-size: 0.8rem !important;
     font-family: 'IBM Plex Mono', monospace !important;
 }
+[data-testid="stHeader"] {
+    background-color: #0a0e1a !important;
+}
+
+[data-testid="stToolbar"] {
+    display: none !important;
+}
+
 .stButton > button {
     background: linear-gradient(135deg, #1a4b8c 0%, #1e3a6e 100%);
     color: #7eb3ff;
@@ -71,6 +84,10 @@ label, .stLabel {
     text-transform: uppercase;
     padding: 8px 20px;
     width: 100%;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: 0.72rem !important;
 }
 .stButton > button:hover {
     background: linear-gradient(135deg, #2055a0 0%, #1a4b8c 100%);
@@ -86,6 +103,17 @@ label, .stLabel {
 [data-testid="stMetricValue"] {
     color: #7eb3ff !important;
     font-family: 'IBM Plex Mono', monospace !important;
+    font-size: clamp(1.6rem, 2.5vw, 3rem) !important;
+    line-height: 1.1 !important;
+    overflow-wrap: anywhere !important;
+}
+
+[data-testid="stMetricLabel"] {
+    font-size: 0.82rem !important;
+}
+
+[data-testid="stMetric"] {
+    min-height: 120px !important;
 }
 .optionlab-header {
     font-family: 'IBM Plex Mono', monospace;
@@ -478,6 +506,102 @@ def plot_comparison(results):
 
     return fig
 
+
+def plot_saved_model_results(results):
+    methods = list(results.keys())
+    prices = [results[m].get("price", 0) for m in methods]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=methods,
+        y=prices,
+        marker_color=["#3b82f6", "#8b5cf6", "#4ade80"][:len(methods)],
+        text=[f"R$ {p:.4f}" for p in prices],
+        textposition="outside",
+        hovertemplate="<b>%{x}</b><br>Preço: R$ %{y:.4f}<extra></extra>",
+    ))
+
+    fig.update_layout(
+        **PLOT_LAYOUT,
+        height=320,
+        title=dict(text="Resultados do modelo salvo", font=dict(color="#7eb3ff", size=13), x=0),
+        yaxis_title="Preço teórico (R$)",
+        showlegend=False,
+    )
+
+    return fig
+
+
+def plot_history_price_and_vol(hist, nome, ticker):
+    log_ret = np.log(hist["Close"] / hist["Close"].shift(1)).dropna()
+    rolling_vol = log_ret.rolling(20).std() * np.sqrt(252) * 100
+
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        row_heights=[0.65, 0.35],
+        vertical_spacing=0.08,
+        subplot_titles=("Preço de fechamento", "Volatilidade histórica 20d (%)"),
+    )
+
+    fig.add_trace(go.Scatter(
+        x=hist.index,
+        y=hist["Close"],
+        mode="lines",
+        line=dict(color="#3b82f6", width=1.8),
+        name="Preço",
+        hovertemplate="Data: %{x|%d/%m/%Y}<br>Preço: R$ %{y:.2f}<extra></extra>",
+    ), row=1, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=rolling_vol.index,
+        y=rolling_vol,
+        mode="lines",
+        line=dict(color="#f59e0b", width=1.6),
+        name="Vol 20d",
+        hovertemplate="Data: %{x|%d/%m/%Y}<br>Vol: %{y:.2f}%<extra></extra>",
+    ), row=2, col=1)
+
+    fig.update_layout(
+        **PLOT_LAYOUT,
+        height=470,
+        title=dict(text=f"Dashboard histórico · {nome} · {ticker}", font=dict(color="#7eb3ff", size=13), x=0),
+        showlegend=False,
+    )
+
+    for ann in fig.layout.annotations:
+        ann.font.color = "#4a7ab5"
+        ann.font.size = 10
+
+    return fig
+
+
+def plot_history_return_distribution(hist, ticker):
+    log_ret = np.log(hist["Close"] / hist["Close"].shift(1)).dropna() * 100
+
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=log_ret,
+        nbinsx=60,
+        marker_color="rgba(59,130,246,0.5)",
+        name="Retornos diários",
+        hovertemplate="Retorno: %{x:.2f}%<br>Freq.: %{y}<extra></extra>",
+    ))
+
+    fig.add_vline(x=log_ret.mean(), line_dash="dash", line_color="#fbbf24", annotation_text="Média")
+
+    fig.update_layout(
+        **PLOT_LAYOUT,
+        height=320,
+        title=dict(text=f"Distribuição de retornos diários · {ticker}", font=dict(color="#7eb3ff", size=13), x=0),
+        xaxis_title="Retorno diário (%)",
+        yaxis_title="Frequência",
+        showlegend=False,
+    )
+
+    return fig
+
 # ─────────────────────────────────────────────
 # HISTORY KEEPER
 # ─────────────────────────────────────────────
@@ -586,13 +710,13 @@ with st.sidebar:
 
     st.markdown('<div class="sidebar-section">01 · Ativo</div>', unsafe_allow_html=True)
 
-    col_t, col_btn = st.columns([3, 2])
+    col_t, col_btn = st.columns([4, 1.3])
 
     with col_t:
         ticker_input = st.text_input("Ticker", value="PETR4", placeholder="PETR4, AAPL, ^BVSP", label_visibility="collapsed")
 
     with col_btn:
-        fetch_btn = st.button("↓ Buscar", key="fetch")
+        fetch_btn = st.button("Buscar", key="fetch")
 
     if fetch_btn and ticker_input:
         with st.spinner("Buscando..."):
@@ -926,7 +1050,7 @@ with tab_compare:
 
 # ─── TAB: HISTÓRICO ───
 with tab_history:
-    st.markdown("### Histórico de ativos e modelos")
+    st.markdown("### Histórico · Research Dashboard")
 
     history = load_stock_history()
 
@@ -936,69 +1060,101 @@ with tab_history:
         summary_rows = []
         for ticker, data in history.items():
             summary_rows.append({
-                "ticker": ticker,
-                "nome": data.get("nome", ""),
-                "last_price": data.get("last_price", ""),
-                "hist_vol": data.get("hist_vol", ""),
-                "last_search": data.get("last_search", ""),
-                "saved_models": len(data.get("calculations", [])),
+                "Ticker": ticker,
+                "Nome": data.get("nome", ""),
+                "Último preço": data.get("last_price", None),
+                "Vol. hist. (%)": data.get("hist_vol", None),
+                "Última busca": data.get("last_search", ""),
+                "Modelos salvos": len(data.get("calculations", [])),
             })
 
-        history_df = pd.DataFrame(summary_rows).sort_values("last_search", ascending=False)
+        history_df = pd.DataFrame(summary_rows).sort_values("Última busca", ascending=False)
 
-        st.markdown("**Ativos pesquisados**")
+        total_assets = len(history_df)
+        total_models = int(history_df["Modelos salvos"].sum())
+        avg_vol = history_df["Vol. hist. (%)"].dropna().mean() if "Vol. hist. (%)" in history_df else 0
+        last_updated = history_df["Última busca"].max()
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Ativos salvos", total_assets)
+        c2.metric("Modelos salvos", total_models)
+        c3.metric("Vol. média", f"{avg_vol:.2f}%" if pd.notna(avg_vol) else "—")
+        c4.metric("Última atualização", last_updated if last_updated else "—")
+
+        st.markdown("---")
+        st.markdown("**Resumo dos ativos pesquisados**")
         st.dataframe(history_df, use_container_width=True, hide_index=True)
 
         selected_ticker = st.selectbox(
-            "Selecionar ativo salvo",
+            "Selecionar ativo para análise completa",
             options=list(history.keys())
         )
 
         selected_data = history[selected_ticker]
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Ticker", selected_data.get("ticker", selected_ticker))
-        c2.metric("Último preço", f"R$ {selected_data.get('last_price', 0):.2f}" if selected_data.get("last_price") is not None else "—")
-        c3.metric("Vol. histórica", f"{selected_data.get('hist_vol', 0):.2f}%" if selected_data.get("hist_vol") is not None else "—")
-        c4.metric("Modelos salvos", len(selected_data.get("calculations", [])))
+        st.markdown("---")
+        st.markdown(f"### {selected_ticker} · {selected_data.get('nome', '')}")
+
+        col_a, col_b, col_c, col_d = st.columns(4)
+        col_a.metric("Último preço salvo", f"R$ {selected_data.get('last_price', 0):.2f}" if selected_data.get("last_price") is not None else "—")
+        col_b.metric("Vol. histórica salva", f"{selected_data.get('hist_vol', 0):.2f}%" if selected_data.get("hist_vol") is not None else "—")
+        col_c.metric("Modelos salvos", len(selected_data.get("calculations", [])))
+        col_d.metric("Última busca", selected_data.get("last_search", "—"))
 
         col_load, col_delete = st.columns(2)
 
         with col_load:
-            if st.button("Carregar ativo"):
-                with st.spinner("Carregando ativo..."):
-                    result = get_stock_data(selected_ticker)
-
-                if result[0]:
-                    ticker_correto, price, vol, hist, nome = result
-
-                    st.session_state.stock_data = result
-                    st.session_state.ticker_symbol = ticker_correto
-                    st.session_state.ticker_name = nome
-                    st.session_state.current_price = price
-                    st.session_state.hist_vol = vol
-                    st.session_state.hist_df = hist
-
-                    save_stock_to_history(ticker_correto, nome, price, vol)
-
-                    st.success(f"{ticker_correto} carregado com sucesso.")
-                    st.rerun()
-                else:
-                    st.error("Não foi possível carregar esse ativo.")
+            refresh_history_btn = st.button("Atualizar dados e gráficos do ativo")
 
         with col_delete:
-            if st.button("Remover ativo e modelos"):
-                delete_stock_from_history(selected_ticker)
-                st.success(f"{selected_ticker} removido do histórico.")
+            delete_history_btn = st.button("Remover ativo e modelos")
+
+        if delete_history_btn:
+            delete_stock_from_history(selected_ticker)
+            st.success(f"{selected_ticker} removido do histórico.")
+            st.rerun()
+
+        with st.spinner("Carregando gráficos do ativo..."):
+            result = get_stock_data(selected_ticker)
+
+        if result[0]:
+            ticker_correto, price, vol, hist, nome = result
+
+            if refresh_history_btn:
+                st.session_state.stock_data = result
+                st.session_state.ticker_symbol = ticker_correto
+                st.session_state.ticker_name = nome
+                st.session_state.current_price = price
+                st.session_state.hist_vol = vol
+                st.session_state.hist_df = hist
+                save_stock_to_history(ticker_correto, nome, price, vol)
+                st.success(f"{ticker_correto} atualizado e carregado com sucesso.")
                 st.rerun()
 
+            log_ret = np.log(hist["Close"] / hist["Close"].shift(1)).dropna()
+            ret_1y = ((hist["Close"].iloc[-1] / hist["Close"].iloc[0]) - 1) * 100
+            max_52w = hist["High"].max()
+            min_52w = hist["Low"].min()
+
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Preço atual", f"R$ {price:.2f}")
+            c2.metric("Vol. anual atual", f"{vol*100:.1f}%")
+            c3.metric("Retorno 1a", f"{ret_1y:.1f}%")
+            c4.metric("Máx. 52s", f"R$ {max_52w:.2f}")
+            c5.metric("Mín. 52s", f"R$ {min_52w:.2f}")
+
+            st.plotly_chart(plot_history_price_and_vol(hist, nome, ticker_correto), use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(plot_history_return_distribution(hist, ticker_correto), use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.warning("Não foi possível carregar os gráficos atuais desse ativo pelo Yahoo Finance. Os dados salvos continuam disponíveis abaixo.")
+
         st.markdown("---")
-        st.markdown("**Modelos salvos para este ativo**")
+        st.markdown("### Modelos salvos para este ativo")
 
         calculations = selected_data.get("calculations", [])
 
         if not calculations:
-            st.info("Esse ativo ainda não possui modelos salvos. Calcule uma opção para salvar o primeiro modelo.")
+            st.info("Esse ativo ainda não possui modelos salvos. Calcule uma opção na aba Resultado para salvar o primeiro modelo.")
         else:
             calc_rows = []
             for i, calc in enumerate(calculations, start=1):
@@ -1007,31 +1163,64 @@ with tab_history:
                     result_summary.append(f"{method_name}: R$ {result_data.get('price', 0):.4f}")
 
                 calc_rows.append({
-                    "#": i,
-                    "calculated_at": calc.get("calculated_at", ""),
-                    "option_type": calc.get("option_type", ""),
-                    "option_style": calc.get("option_style", ""),
-                    "method": calc.get("method_selected", ""),
+                    "Modelo": i,
+                    "Data": calc.get("calculated_at", ""),
+                    "Tipo": calc.get("option_type", ""),
+                    "Estilo": calc.get("option_style", ""),
+                    "Método": calc.get("method_selected", ""),
                     "S0": calc.get("S0", ""),
-                    "K": calc.get("K", ""),
-                    "T_days": calc.get("T_days", ""),
-                    "r_pct": calc.get("r_pct", ""),
-                    "sigma_pct": calc.get("sigma_pct", ""),
-                    "moneyness": calc.get("moneyness", ""),
-                    "results": " | ".join(result_summary),
+                    "Strike": calc.get("K", ""),
+                    "Prazo dias": calc.get("T_days", ""),
+                    "Taxa %": calc.get("r_pct", ""),
+                    "Vol. %": calc.get("sigma_pct", ""),
+                    "Moneyness": calc.get("moneyness", ""),
+                    "Resultado": " | ".join(result_summary),
                 })
 
-            calc_df = pd.DataFrame(calc_rows).sort_values("calculated_at", ascending=False)
+            calc_df = pd.DataFrame(calc_rows).sort_values("Data", ascending=False)
             st.dataframe(calc_df, use_container_width=True, hide_index=True)
 
-            selected_calc_number = st.selectbox(
-                "Ver detalhes de um modelo salvo",
-                options=[row["#"] for row in calc_rows]
+            selected_model_number = st.selectbox(
+                "Selecionar modelo salvo para visualizar gráficos",
+                options=[row["Modelo"] for row in calc_rows]
             )
 
-            selected_calc = calculations[selected_calc_number - 1]
+            selected_calc = calculations[selected_model_number - 1]
 
-            with st.expander("Detalhes completos do modelo selecionado", expanded=True):
+            st.markdown("#### Visão do modelo selecionado")
+
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("Tipo", selected_calc.get("option_type", "—"))
+            m2.metric("Estilo", selected_calc.get("option_style", "—"))
+            m3.metric("Strike", f"R$ {selected_calc.get('K', 0):.2f}")
+            m4.metric("Prazo", f"{selected_calc.get('T_days', 0)} dias")
+            m5.metric("Vol.", f"{selected_calc.get('sigma_pct', 0):.2f}%")
+
+            selected_results = selected_calc.get("results", {})
+
+            if selected_results:
+                st.plotly_chart(plot_saved_model_results(selected_results), use_container_width=True, config={"displayModeBar": False})
+
+            try:
+                saved_S0 = float(selected_calc.get("S0", 0))
+                saved_K = float(selected_calc.get("K", 0))
+                saved_option_type = str(selected_calc.get("option_type", "Call")).lower()
+
+                first_price = 0
+                if selected_results:
+                    first_method = list(selected_results.keys())[0]
+                    first_price = selected_results[first_method].get("price", 0)
+
+                if saved_S0 > 0 and saved_K > 0:
+                    st.plotly_chart(
+                        plot_payoff(saved_S0, saved_K, saved_option_type, first_price),
+                        use_container_width=True,
+                        config={"displayModeBar": False},
+                    )
+            except Exception:
+                st.warning("Não foi possível gerar o payoff do modelo salvo.")
+
+            with st.expander("Ver dados completos do modelo em JSON"):
                 st.json(selected_calc)
 
 # ─────────────────────────────────────────────
