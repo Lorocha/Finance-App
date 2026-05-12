@@ -780,11 +780,6 @@ with st.sidebar:
         n_steps_mc = 100
         n_nodes = 200
 
-    st.markdown('<div class="sidebar-section">05 · Vol. Implícita</div>', unsafe_allow_html=True)
-
-    market_price = st.number_input("Preço de mercado da opção", value=0.0, min_value=0.0, step=0.01, format="%.4f")
-    iv_method = st.radio("Método VI", ["Newton-Raphson", "Bisseção"], horizontal=True)
-
     st.markdown("<br>", unsafe_allow_html=True)
     calc_btn = st.button("▶ CALCULAR", key="calc")
     compare_btn = st.button("⬡ COMPARAR MÉTODOS", key="compare")
@@ -822,6 +817,30 @@ tab_result, tab_market, tab_greeks, tab_mc, tab_compare, tab_history = st.tabs([
 
 # ─── TAB: RESULTADO ───
 with tab_result:
+    st.markdown("### Inputs de mercado da opção")
+
+    col_mkt1, col_mkt2 = st.columns([2, 1])
+
+    with col_mkt1:
+        market_price = st.number_input(
+            "Preço de mercado da opção para calcular Volatilidade Implícita",
+            value=0.0,
+            min_value=0.0,
+            step=0.01,
+            format="%.4f",
+            help="Digite o preço observado da opção no mercado. Se deixar 0, a volatilidade implícita não será calculada."
+        )
+
+    with col_mkt2:
+        iv_method = st.radio(
+            "Método VI",
+            ["Newton-Raphson", "Bisseção"],
+            horizontal=False,
+            help="Escolha o método numérico usado para encontrar a volatilidade implícita."
+        )
+
+    st.markdown("---")
+
     if calc_btn or compare_btn:
         ot = option_type.lower()
         es = option_style.lower()
@@ -919,7 +938,7 @@ with tab_result:
 
         if market_price > 0:
             st.markdown("---")
-            st.markdown("**Volatilidade Implícita**")
+            st.markdown("### Volatilidade Implícita")
 
             if iv_method == "Newton-Raphson":
                 iv = implied_vol_newton(market_price, S0, K, T, r, ot)
@@ -927,13 +946,36 @@ with tab_result:
                 iv = implied_vol_bisection(market_price, S0, K, T, r, ot)
 
             if iv:
+                diff_pct = (iv - sigma) / sigma * 100 if sigma > 0 else 0
+                iv_status = "ACIMA DA HISTÓRICA" if iv > sigma else "ABAIXO DA HISTÓRICA"
+                iv_color = "#fbbf24" if iv > sigma else "#4ade80"
+
+                st.markdown(f"""
+                <div class="price-card" style="border-color:{iv_color}; margin-top:14px; margin-bottom:18px;">
+                    <div class="price-label">VOLATILIDADE IMPLÍCITA · {iv_method}</div>
+                    <div class="price-value" style="font-size:3.2rem; color:{iv_color};">
+                        {iv*100:.4f}%
+                    </div>
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:0.78rem; color:#8899bb; margin-top:10px;">
+                        Calculada a partir do preço de mercado da opção: <b>R$ {market_price:.4f}</b><br>
+                        Status: <b style="color:{iv_color};">{iv_status}</b>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
                 col_iv1, col_iv2, col_iv3 = st.columns(3)
                 col_iv1.metric("Vol. Implícita", f"{iv*100:.4f}%")
                 col_iv2.metric("Vol. Histórica", f"{sigma_pct:.2f}%")
-                diff_pct = (iv - sigma) / sigma * 100 if sigma > 0 else 0
-                col_iv3.metric("Diferença IV−HV", f"{diff_pct:+.1f}%", delta_color="off")
+                col_iv3.metric("Diferença IV − HV", f"{diff_pct:+.1f}%", delta_color="off")
+
+                if iv > sigma * 1.1:
+                    st.markdown('<div class="status-warn">📌 A volatilidade implícita está acima da histórica. Isso sugere que o mercado está precificando mais incerteza futura do que a volatilidade passada indica.</div>', unsafe_allow_html=True)
+                elif iv < sigma * 0.9:
+                    st.markdown('<div class="status-found">📌 A volatilidade implícita está abaixo da histórica. Isso sugere que a opção pode estar relativamente barata em relação ao risco histórico.</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="status-found">📌 A volatilidade implícita está próxima da volatilidade histórica.</div>', unsafe_allow_html=True)
             else:
-                st.markdown('<div class="status-error">✕ Não foi possível calcular a vol. implícita.</div>', unsafe_allow_html=True)
+                st.markdown('<div class="status-error">✕ Não foi possível calcular a vol. implícita. Verifique se o preço de mercado da opção é consistente com os parâmetros.</div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("**Diagrama de Payoff**")
