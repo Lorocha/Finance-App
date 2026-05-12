@@ -499,13 +499,42 @@ def save_stock_to_history(ticker, nome, price, vol):
     os.makedirs("history", exist_ok=True)
     history = load_stock_history()
 
-    history[ticker] = {
-        "ticker": ticker,
-        "nome": nome,
-        "last_price": round(float(price), 2),
-        "hist_vol": round(float(vol) * 100, 2),
-        "last_search": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
+    if ticker not in history:
+        history[ticker] = {
+            "ticker": ticker,
+            "nome": nome,
+            "last_price": round(float(price), 2),
+            "hist_vol": round(float(vol) * 100, 2),
+            "last_search": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "calculations": [],
+        }
+    else:
+        history[ticker]["nome"] = nome
+        history[ticker]["last_price"] = round(float(price), 2)
+        history[ticker]["hist_vol"] = round(float(vol) * 100, 2)
+        history[ticker]["last_search"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        history[ticker].setdefault("calculations", [])
+
+    with open(HISTORY_FILE, "w", encoding="utf-8") as file:
+        json.dump(history, file, indent=4, ensure_ascii=False)
+
+
+def save_calculation_to_history(ticker, calculation_data):
+    os.makedirs("history", exist_ok=True)
+    history = load_stock_history()
+
+    if ticker not in history:
+        history[ticker] = {
+            "ticker": ticker,
+            "nome": ticker,
+            "last_price": None,
+            "hist_vol": None,
+            "last_search": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "calculations": [],
+        }
+
+    history[ticker].setdefault("calculations", [])
+    history[ticker]["calculations"].append(calculation_data)
 
     with open(HISTORY_FILE, "w", encoding="utf-8") as file:
         json.dump(history, file, indent=4, ensure_ascii=False)
@@ -698,6 +727,33 @@ with tab_result:
 
         st.session_state.last_result = results
 
+        active_ticker = st.session_state.ticker_symbol or ticker_input.upper().strip()
+
+        calculation_data = {
+            "calculated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ticker": active_ticker,
+            "stock_name": st.session_state.ticker_name,
+            "option_type": option_type,
+            "option_style": option_style,
+            "method_selected": method,
+            "S0": round(float(S0), 4),
+            "K": round(float(K), 4),
+            "T_days": int(T_days),
+            "r_pct": round(float(r_pct), 4),
+            "sigma_pct": round(float(sigma_pct), 4),
+            "market_price": round(float(market_price), 4),
+            "moneyness": moneyness,
+            "results": {
+                method_name: {
+                    "price": round(float(result_data["price"]), 6),
+                    "extra": result_data.get("extra", ""),
+                }
+                for method_name, result_data in results.items()
+            },
+        }
+
+        save_calculation_to_history(active_ticker, calculation_data)
+
         main_price = results[methods_to_run[0]]["price"]
 
         col_price, col_meta = st.columns([2, 3])
@@ -870,19 +926,41 @@ with tab_compare:
 
 # ─── TAB: HISTÓRICO ───
 with tab_history:
-    st.markdown("### Histórico de ativos pesquisados")
+    st.markdown("### Histórico de ativos e modelos")
 
     history = load_stock_history()
 
     if not history:
         st.info("Nenhum ativo pesquisado ainda. Busque um ticker na barra lateral para começar.")
     else:
-        history_df = pd.DataFrame(history.values())
-        history_df = history_df.sort_values("last_search", ascending=False)
+        summary_rows = []
+        for ticker, data in history.items():
+            summary_rows.append({
+                "ticker": ticker,
+                "nome": data.get("nome", ""),
+                "last_price": data.get("last_price", ""),
+                "hist_vol": data.get("hist_vol", ""),
+                "last_search": data.get("last_search", ""),
+                "saved_models": len(data.get("calculations", [])),
+            })
 
+        history_df = pd.DataFrame(summary_rows).sort_values("last_search", ascending=False)
+
+        st.markdown("**Ativos pesquisados**")
         st.dataframe(history_df, use_container_width=True, hide_index=True)
 
-        selected_ticker = st.selectbox("Carregar ativo do histórico", options=list(history.keys()))
+        selected_ticker = st.selectbox(
+            "Selecionar ativo salvo",
+            options=list(history.keys())
+        )
+
+        selected_data = history[selected_ticker]
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Ticker", selected_data.get("ticker", selected_ticker))
+        c2.metric("Último preço", f"R$ {selected_data.get('last_price', 0):.2f}" if selected_data.get("last_price") is not None else "—")
+        c3.metric("Vol. histórica", f"{selected_data.get('hist_vol', 0):.2f}%" if selected_data.get("hist_vol") is not None else "—")
+        c4.metric("Modelos salvos", len(selected_data.get("calculations", [])))
 
         col_load, col_delete = st.columns(2)
 
@@ -909,10 +987,52 @@ with tab_history:
                     st.error("Não foi possível carregar esse ativo.")
 
         with col_delete:
-            if st.button("Remover do histórico"):
+            if st.button("Remover ativo e modelos"):
                 delete_stock_from_history(selected_ticker)
                 st.success(f"{selected_ticker} removido do histórico.")
                 st.rerun()
+
+        st.markdown("---")
+        st.markdown("**Modelos salvos para este ativo**")
+
+        calculations = selected_data.get("calculations", [])
+
+        if not calculations:
+            st.info("Esse ativo ainda não possui modelos salvos. Calcule uma opção para salvar o primeiro modelo.")
+        else:
+            calc_rows = []
+            for i, calc in enumerate(calculations, start=1):
+                result_summary = []
+                for method_name, result_data in calc.get("results", {}).items():
+                    result_summary.append(f"{method_name}: R$ {result_data.get('price', 0):.4f}")
+
+                calc_rows.append({
+                    "#": i,
+                    "calculated_at": calc.get("calculated_at", ""),
+                    "option_type": calc.get("option_type", ""),
+                    "option_style": calc.get("option_style", ""),
+                    "method": calc.get("method_selected", ""),
+                    "S0": calc.get("S0", ""),
+                    "K": calc.get("K", ""),
+                    "T_days": calc.get("T_days", ""),
+                    "r_pct": calc.get("r_pct", ""),
+                    "sigma_pct": calc.get("sigma_pct", ""),
+                    "moneyness": calc.get("moneyness", ""),
+                    "results": " | ".join(result_summary),
+                })
+
+            calc_df = pd.DataFrame(calc_rows).sort_values("calculated_at", ascending=False)
+            st.dataframe(calc_df, use_container_width=True, hide_index=True)
+
+            selected_calc_number = st.selectbox(
+                "Ver detalhes de um modelo salvo",
+                options=[row["#"] for row in calc_rows]
+            )
+
+            selected_calc = calculations[selected_calc_number - 1]
+
+            with st.expander("Detalhes completos do modelo selecionado", expanded=True):
+                st.json(selected_calc)
 
 # ─────────────────────────────────────────────
 # FOOTER
