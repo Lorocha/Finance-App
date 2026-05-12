@@ -50,13 +50,14 @@ html, body, [class*="css"] { font-family: 'IBM Plex Sans', sans-serif; }
     padding-bottom: 4px;
 }
 [data-testid="stSelectbox"] > div > div,
-[data-testid="stNumberInput"] > div > div > input,
-[data-testid="stTextInput"] > div > div > input,
+[data-testid="stNumberInput"] input,
+[data-testid="stTextInput"] input,
 [data-testid="stSlider"] > div {
     background-color: #111828 !important;
     border: 1px solid #1e2d4a !important;
     color: #c9d1e0 !important;
-    border-radius: 4px !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
     font-family: 'IBM Plex Mono', monospace !important;
     font-size: 0.85rem !important;
 }
@@ -75,6 +76,7 @@ label, .stLabel {
 
 .stButton > button {
     background: linear-gradient(135deg, #1a4b8c 0%, #1e3a6e 100%);
+    min-height: 54px !important;
     color: #7eb3ff;
     border: 1px solid #2d5c9e;
     border-radius: 4px;
@@ -87,7 +89,7 @@ label, .stLabel {
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
-    font-size: 0.72rem !important;
+    font-size: 0.82rem !important;
 }
 .stButton > button:hover {
     background: linear-gradient(135deg, #2055a0 0%, #1a4b8c 100%);
@@ -716,7 +718,7 @@ with st.sidebar:
         ticker_input = st.text_input("Ticker", value="PETR4", placeholder="PETR4, AAPL, ^BVSP", label_visibility="collapsed")
 
     with col_btn:
-        fetch_btn = st.button("Buscar", key="fetch")
+        fetch_btn = st.button("🔍", key="fetch")
 
     if fetch_btn and ticker_input:
         with st.spinner("Buscando..."):
